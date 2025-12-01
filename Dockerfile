@@ -5,6 +5,7 @@ RUN apt-get update \
      && apt-get install -y --no-install-recommends \
          build-essential cmake libboost-all-dev \
          libmariadb-dev-compat libmariadb-dev python3-dev \
+         pkg-config libssl-dev libffi-dev \
      && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
