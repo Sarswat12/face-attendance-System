@@ -1,0 +1,395 @@
+openapi: 3.0.3
+info:
+  title: Face Recognition Attendance - Backend API (inferred)
+  version: 1.0.0
+  description: |
+    OpenAPI spec inferred from the frontend. Use this as a starting point for backend implementation.
+servers:
+  - url: http://localhost:8000
+    description: Local development server (set `VITE_API_BASE` in frontend)
+paths:
+  /api/auth/login:
+    post:
+      summary: User login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+                role:
+                  type: string
+                  enum: [admin, employee]
+              required: [email, password]
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  user_id:
+                    type: string
+                  name:
+                    type: string
+                  role:
+                    type: string
+              example:
+                token: eyJhbGciOiJI...
+                user_id: "u_123"
+                name: "Alice"
+                role: "employee"
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+              example:
+                error: "Invalid email or password"
+
+  /api/auth/register:
+    post:
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                email: { type: string }
+                password: { type: string }
+                role:
+                  type: string
+                  enum: [admin, employee]
+              required: [name, email, password]
+      responses:
+        '201':
+          description: Registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  user_id: { type: string }
+                  name: { type: string }
+                  role: { type: string }
+              example:
+                token: eyJhbGciOiJI...
+                user_id: "u_124"
+                name: "Bob"
+                role: "employee"
+
+  /api/auth/verify-token:
+    get:
+      summary: Verify auth token and return user info
+      responses:
+        '200':
+          description: Token valid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid: { type: boolean }
+                  user_id: { type: string }
+                  name: { type: string }
+                  role: { type: string }
+              example:
+                valid: true
+                user_id: "u_123"
+                name: "Alice"
+                role: "employee"
+        '401':
+          description: Token invalid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid: { type: boolean }
+                  error: { type: string }
+              example:
+                valid: false
+                error: "Token expired"
+
+  /api/users:
+    get:
+      summary: List users (optional filtering via ?role=)
+      parameters:
+        - in: query
+          name: role
+          schema:
+            type: string
+            enum: [admin, employee]
+      responses:
+        '200':
+          description: Users list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+              example:
+                users:
+                  - id: "u_123"
+                    name: "Alice"
+                    email: "alice@example.com"
+                    role: "employee"
+                    department: "Engineering"
+                    avatar: "/media/avatars/u123.png"
+    post:
+      summary: Create user
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /api/users/{id}:
+    get:
+      summary: Get user by id
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: User
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+    put:
+      summary: Update user
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdate'
+      responses:
+        '200':
+          description: Updated
+    delete:
+      summary: Delete user
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '204':
+          description: Deleted
+
+  /api/face/enroll:
+    post:
+      summary: Enroll face image (multipart)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Enrollment result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  face_id: { type: string }
+              example:
+                success: true
+                face_id: "face_987"
+
+  /api/attendance/mark:
+    post:
+      summary: Mark attendance (image or reference)
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                image_url: { type: string }
+                face_id: { type: string }
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Attendance marked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  marked: { type: boolean }
+                  record:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      userId: { type: string }
+                      name: { type: string }
+                      status: { type: string }
+                      timestamp: { type: string }
+              example:
+                marked: true
+                record:
+                  id: "rec_1"
+                  userId: "EMP001"
+                  name: "Alice"
+                  status: "Present"
+                  timestamp: "2025-11-25T09:00:00Z"
+
+  /api/attendance/today:
+    get:
+      summary: Get today's attendance summary or record for current user
+      responses:
+        '200':
+          description: Today's record/summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  record: { type: object }
+                  summary: { type: object }
+
+  /api/attendance/records:
+    get:
+      summary: List attendance records (query by date, user, page)
+      parameters:
+        - in: query
+          name: date
+          schema: { type: string, format: date }
+        - in: query
+          name: userId
+          schema: { type: string }
+        - in: query
+          name: page
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Records
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  records:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        userId: { type: string }
+                        name: { type: string }
+                        department: { type: string }
+                        timestamp: { type: string }
+                        status: { type: string }
+              example:
+                records:
+                  - id: "rec_1"
+                    userId: "EMP001"
+                    name: "Alice"
+                    department: "Engineering"
+                    timestamp: "2025-11-25T09:00:00Z"
+                    status: "Present"
+
+  /api/statistics/dashboard:
+    get:
+      summary: Dashboard statistics
+      responses:
+        '200':
+          description: Dashboard stats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_users: { type: integer }
+                  present_today: { type: integer }
+                  absent_today: { type: integer }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    User:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        email: { type: string }
+        role: { type: string }
+        department: { type: string }
+        avatar: { type: string }
+        status: { type: string }
+    UserCreate:
+      type: object
+      properties:
+        name: { type: string }
+        email: { type: string }
+        password: { type: string }
+        role: { type: string }
+    UserUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        email: { type: string }
+        role: { type: string }
+        department: { type: string }

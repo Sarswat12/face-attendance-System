@@ -1,0 +1,2 @@
+timestamp,query_id,best_uid,best_d,runner_up_d,margin,per_face_min,accepted,latency,true_label
+1764238278.5621488,a7e1bba4-4b08-4f75-9e67-edd7f334e750,1,0.1923607885837555,inf,inf,0.12713158130645752,True,0.0,
