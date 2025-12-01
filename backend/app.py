@@ -315,7 +315,31 @@ def create_app():
 
     with app.app_context():
         # Create tables if they don't exist (for initial dev). Use migrations in production.
-        db.create_all()
+        # Wrap in a safe try/except so startup doesn't fail if schema was already applied
+        # (for example when doc/schema.sql was used to initialize the database).
+        try:
+            db.create_all()
+        except Exception as e:
+            # Detect MySQL 'table exists' error (errno 1050) and continue; re-raise otherwise.
+            try:
+                from sqlalchemy.exc import OperationalError
+
+                if isinstance(e, OperationalError) and hasattr(e, 'orig'):
+                    orig = e.orig
+                    # pymysql and mysqlclient expose errno as first arg in .args
+                    if hasattr(orig, 'args') and len(orig.args) and orig.args[0] == 1050:
+                        app.logger.info('Tables already exist, skipping create_all')
+                    else:
+                        raise
+                else:
+                    # For other DBAPIs, check message text for 'already exists'
+                    if 'already exists' in str(e).lower():
+                        app.logger.info('Tables already exist, skipping create_all')
+                    else:
+                        raise
+            except Exception:
+                # If anything unexpected occurs while inspecting, re-raise the original
+                raise
         # Runtime best-effort: if new Attendance columns were added in code but
         # migrations haven't been applied (dev environment), attempt to add them
         # so endpoints that SELECT these columns don't fail with OperationalError.
