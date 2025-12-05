@@ -314,71 +314,76 @@ def create_app():
         return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
     with app.app_context():
-        # Create tables if they don't exist (for initial dev). Use migrations in production.
-        # Wrap in a safe try/except so startup doesn't fail if schema was already applied
-        # (for example when doc/schema.sql was used to initialize the database).
-        try:
-            db.create_all()
-        except Exception as e:
-            # Detect MySQL 'table exists' error (errno 1050) and continue; re-raise otherwise.
+        # Only run automatic schema creation when explicitly enabled. This
+        # prevents the live application from attempting DDL on every startup.
+        auto_migrate = os.getenv('AUTO_MIGRATE', '').lower() == 'true'
+        if auto_migrate:
             try:
-                from sqlalchemy.exc import OperationalError
+                db.create_all()
+                app.logger.info('AUTO_MIGRATE enabled: tables created or already present')
+            except Exception as e:
+                # Detect MySQL 'table exists' error (errno 1050) and continue; re-raise otherwise.
+                try:
+                    from sqlalchemy.exc import OperationalError
 
-                if isinstance(e, OperationalError) and hasattr(e, 'orig'):
-                    orig = e.orig
-                    # pymysql and mysqlclient expose errno as first arg in .args
-                    if hasattr(orig, 'args') and len(orig.args) and orig.args[0] == 1050:
-                        app.logger.info('Tables already exist, skipping create_all')
+                    if isinstance(e, OperationalError) and hasattr(e, 'orig'):
+                        orig = e.orig
+                        # pymysql and mysqlclient expose errno as first arg in .args
+                        if hasattr(orig, 'args') and len(orig.args) and orig.args[0] == 1050:
+                            app.logger.info('Tables already exist, skipping create_all')
+                        else:
+                            raise
                     else:
-                        raise
-                else:
-                    # For other DBAPIs, check message text for 'already exists'
-                    if 'already exists' in str(e).lower():
-                        app.logger.info('Tables already exist, skipping create_all')
-                    else:
-                        raise
+                        # For other DBAPIs, check message text for 'already exists'
+                        if 'already exists' in str(e).lower():
+                            app.logger.info('Tables already exist, skipping create_all')
+                        else:
+                            raise
+                except Exception:
+                    # If anything unexpected occurs while inspecting, re-raise the original
+                    raise
+
+            # Runtime best-effort: if new Attendance columns were added in code but
+            # migrations haven't been applied (dev environment), attempt to add them
+            # so endpoints that SELECT these columns don't fail with OperationalError.
+            try:
+                engine = db.get_engine(app)
+                with engine.connect() as conn:
+                    # Add columns if they don't exist. Some DBs support IF NOT EXISTS.
+                    try:
+                        conn.execute("""
+                            ALTER TABLE attendance
+                            ADD COLUMN IF NOT EXISTS local_timestamp DATETIME NULL,
+                            ADD COLUMN IF NOT EXISTS latitude DOUBLE NULL,
+                            ADD COLUMN IF NOT EXISTS longitude DOUBLE NULL
+                        """)
+                    except Exception:
+                        # Fallback: try individual ALTERs without IF NOT EXISTS
+                        try:
+                            conn.execute("ALTER TABLE attendance ADD COLUMN local_timestamp DATETIME NULL")
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute("ALTER TABLE attendance ADD COLUMN latitude DOUBLE NULL")
+                        except Exception:
+                            pass
+                        try:
+                            conn.execute("ALTER TABLE attendance ADD COLUMN longitude DOUBLE NULL")
+                        except Exception:
+                            pass
+                    # Attempt to add the new 'note' column used for special audit flags
+                    try:
+                        conn.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS note VARCHAR(128) NULL")
+                    except Exception:
+                        try:
+                            conn.execute("ALTER TABLE attendance ADD COLUMN note VARCHAR(128) NULL")
+                        except Exception:
+                            pass
             except Exception:
-                # If anything unexpected occurs while inspecting, re-raise the original
-                raise
-        # Runtime best-effort: if new Attendance columns were added in code but
-        # migrations haven't been applied (dev environment), attempt to add them
-        # so endpoints that SELECT these columns don't fail with OperationalError.
-        try:
-            engine = db.get_engine(app)
-            with engine.connect() as conn:
-                # Add columns if they don't exist. Some DBs support IF NOT EXISTS.
-                try:
-                    conn.execute("""
-                        ALTER TABLE attendance
-                        ADD COLUMN IF NOT EXISTS local_timestamp DATETIME NULL,
-                        ADD COLUMN IF NOT EXISTS latitude DOUBLE NULL,
-                        ADD COLUMN IF NOT EXISTS longitude DOUBLE NULL
-                    """)
-                except Exception:
-                    # Fallback: try individual ALTERs without IF NOT EXISTS
-                    try:
-                        conn.execute("ALTER TABLE attendance ADD COLUMN local_timestamp DATETIME NULL")
-                    except Exception:
-                        pass
-                    try:
-                        conn.execute("ALTER TABLE attendance ADD COLUMN latitude DOUBLE NULL")
-                    except Exception:
-                        pass
-                    try:
-                        conn.execute("ALTER TABLE attendance ADD COLUMN longitude DOUBLE NULL")
-                    except Exception:
-                        pass
-                # Attempt to add the new 'note' column used for special audit flags
-                try:
-                    conn.execute("ALTER TABLE attendance ADD COLUMN IF NOT EXISTS note VARCHAR(128) NULL")
-                except Exception:
-                    try:
-                        conn.execute("ALTER TABLE attendance ADD COLUMN note VARCHAR(128) NULL")
-                    except Exception:
-                        pass
-        except Exception:
-            # Don't block app startup if DB doesn't permit DDL here.
-            app.logger.info('Runtime migration: skipping attendance column additions')
+                # Don't block app startup if DB doesn't permit DDL here.
+                app.logger.info('Runtime migration: skipping attendance column additions')
+        else:
+            app.logger.info('AUTO_MIGRATE not enabled; skipping automatic create_all and runtime DDL')
 
     return app
 
