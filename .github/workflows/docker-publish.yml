@@ -19,7 +19,12 @@ env:
   # Use docker.io for Docker Hub if empty
   REGISTRY: ghcr.io
   # github.repository as <account>/<repo>
-  IMAGE_NAME: ${{ github.repository }}
+  # ensure registry path is all-lowercase (Docker/OCI requires lowercase repo names)
+  IMAGE_NAME: ${{ toLower(github.repository) }}
+  # Optionally provide a prebuilt image (digest or tag) to skip building on CI.
+  # Set this as a repository secret PREBUILT_IMAGE if you want CI to retag & push
+  # an existing image instead of building (useful for heavy native deps).
+  PREBUILT_IMAGE: ${{ secrets.PREBUILT_IMAGE }}
 
 
 jobs:
@@ -69,9 +74,20 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
+      - name: Use prebuilt image (skip build)
+        if: ${{ env.PREBUILT_IMAGE != '' }}
+        id: use_prebuilt
+        run: |
+          echo "Pulling prebuilt image: $PREBUILT_IMAGE"
+          docker pull $PREBUILT_IMAGE
+          docker tag $PREBUILT_IMAGE ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          echo "skip_build=true" >> $GITHUB_OUTPUT
+
       # Build and push Docker image with Buildx (don't push on PR)
       # https://github.com/docker/build-push-action
       - name: Build and push Docker image
+        if: ${{ env.PREBUILT_IMAGE == '' }}
         id: build-and-push
         uses: docker/build-push-action@0565240e2d4ab88bba5387d719585280857ece09 # v5.0.0
         with:
