@@ -32,6 +32,8 @@ jobs:
         env:
           # Provide the Railway DB URL via secret; do not print this value
           SQLALCHEMY_DATABASE_URI: ${{ secrets.RAILWAY_DB_URL }}
+          # Run app in development mode during CI to avoid requiring production-only secrets
+          FLASK_ENV: development
         run: |
           python create_tables.py
 
