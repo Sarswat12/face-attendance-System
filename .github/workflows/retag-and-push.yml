@@ -10,8 +10,11 @@ jobs:
   retag-and-push:
     runs-on: ubuntu-latest
     steps:
-      - name: Login to source registry (if needed)
-        if: ${{ secrets.SOURCE_REGISTRY }}
+      - name: Setup Docker CLI
+        uses: docker/setup-docker@v3
+
+      - name: Login to source registry (if private)
+        if: ${{ secrets.SOURCE_REGISTRY && secrets.SOURCE_REGISTRY != '' }}
         uses: docker/login-action@v2
         with:
           registry: ${{ secrets.SOURCE_REGISTRY }}
@@ -21,14 +24,17 @@ jobs:
       - name: Pull prebuilt image
         env:
           PREBUILT: ${{ secrets.PREBUILT_IMAGE }}
-        run: docker pull "$PREBUILT"
-
-      - name: Retag for GHCR
         run: |
-          SRC="${{ secrets.PREBUILT_IMAGE }}"
+          echo "Pulling $PREBUILT"
+          docker pull "$PREBUILT"
+
+      - name: Create GHCR target tag
+        id: make_tag
+        run: |
           OWNER="${{ github.repository_owner }}"
           REPO="${{ github.event.repository.name }}"
-          docker tag "$SRC" "ghcr.io/${OWNER}/${REPO}:latest"
+          TARGET="ghcr.io/${OWNER}/${REPO}:latest"
+          echo "target=$TARGET" >> $GITHUB_OUTPUT
 
       - name: Login to GHCR
         uses: docker/login-action@v2
@@ -37,8 +43,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GHCR_TOKEN }}
 
-      - name: Push to GHCR
+      - name: Tag and push to GHCR
         run: |
-          OWNER="${{ github.repository_owner }}"
-          REPO="${{ github.event.repository.name }}"
-          docker push "ghcr.io/${OWNER}/${REPO}:latest"
+          SRC="${{ secrets.PREBUILT_IMAGE }}"
+          TARGET="${{ steps.make_tag.outputs.target }}"
+          echo "Retagging $SRC -> $TARGET"
+          docker tag "$SRC" "$TARGET"
+          echo "Pushing $TARGET"
+          docker push "$TARGET"
+
+      - name: Verify
+        run: |
+          echo "Done. Pushed ${{ steps.make_tag.outputs.target }}"
