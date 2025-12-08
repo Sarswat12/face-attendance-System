@@ -16,9 +16,10 @@ RUN pip install -r /app/requirements.txt
 
 COPY . /app
 
-ENV FLASK_APP=manage:app
 ENV FLASK_ENV=production
+ENV PYTHONUNBUFFERED=1
 
-# Use the `manage` module which exposes a module-level `app` variable
-# so Gunicorn can import the WSGI application as `manage:app`.
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:8000", "manage:app"]
+# Gunicorn directly runs the create_app factory from backend.app module.
+# The manage module at repo root exposes: app = create_app()
+# Gunicorn imports it as: manage:app
+CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:8000", "--timeout", "60", "--access-logfile", "-", "--error-logfile", "-", "manage:app"]
