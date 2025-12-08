@@ -22,4 +22,5 @@ ENV PYTHONUNBUFFERED=1
 # Gunicorn directly runs the create_app factory from backend.app module.
 # The manage module at repo root exposes: app = create_app()
 # Gunicorn imports it as: manage:app
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:8000", "--timeout", "60", "--access-logfile", "-", "--error-logfile", "-", "manage:app"]
+# Keep worker count low to fit Render's 512Mi service tier.
+CMD ["gunicorn", "-w", "1", "--threads", "2", "-b", "0.0.0.0:8000", "--timeout", "60", "--access-logfile", "-", "--error-logfile", "-", "manage:app"]
