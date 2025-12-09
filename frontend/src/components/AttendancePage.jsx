@@ -84,22 +84,46 @@ export function AttendancePage({ user, onNavigate, onLogout }) {
       if (!blob) throw new Error('Failed to capture image');
       const file = new File([blob], `capture_${Date.now()}.png`, { type: 'image/png' });
 
-      // attempt to get geolocation (optional)
+      // Attempt to get geolocation (optional but important for attendance tracking)
       let coords = {};
       if (navigator.geolocation) {
         try {
           coords = await new Promise((resolve, reject) => {
+            const timeoutId = setTimeout(() => {
+              console.warn('Geolocation request timed out after 5 seconds');
+              resolve({});
+            }, 5000);
+
             navigator.geolocation.getCurrentPosition(
-              (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
-              (err) => resolve({}),
-              { timeout: 3000 }
+              (pos) => {
+                clearTimeout(timeoutId);
+                const lat = pos.coords.latitude;
+                const lon = pos.coords.longitude;
+                console.log('Geolocation obtained:', { latitude: lat, longitude: lon });
+                resolve({ latitude: lat, longitude: lon });
+              },
+              (err) => {
+                clearTimeout(timeoutId);
+                console.warn('Geolocation error:', err.message);
+                // User denied permission or other error - continue without geolocation
+                resolve({});
+              },
+              { 
+                timeout: 5000,
+                enableHighAccuracy: true,
+                maximumAge: 0 // Get fresh location
+              }
             );
           });
         } catch (e) {
+          console.warn('Geolocation exception:', e);
           coords = {};
         }
+      } else {
+        console.warn('Geolocation not supported in this browser');
       }
 
+      console.log('Sending attendance with coords:', coords);
       const res = await uploadSingle('/api/attendance/mark', file, (p) => setRecognitionProgress(p), coords);
       // Expecting { success: true, user_id, name, distance? }
       if (res && (res.success || res.matched || res.marked)) {

@@ -155,20 +155,43 @@ export function RegisterFace({ user, onNavigate, onLogout }) {
     } catch (err) {
       // Try to surface server-provided error message for better UX
       let serverMsg = null;
+      let detailedError = '';
       try {
         // Axios error -> err.response.data
-        serverMsg = err?.response?.data?.error || err?.response?.data?.message || null;
+        const errorData = err?.response?.data;
+        serverMsg = errorData?.error || errorData?.message || null;
+        
+        // Log detailed error for debugging
+        console.error('Face enrollment error:', {
+          status: err?.response?.status,
+          error: serverMsg,
+          data: errorData
+        });
+
+        // Provide helpful user-facing messages based on backend errors
+        if (serverMsg?.includes('no face detected')) {
+          detailedError = 'No face detected in image. Make sure your face is clearly visible.';
+        } else if (serverMsg?.includes('multiple faces')) {
+          detailedError = 'Multiple faces detected. Please ensure only your face is in the photo.';
+        } else if (serverMsg?.includes('too blurry')) {
+          detailedError = 'Image is too blurry. Please use a clear, well-lit photo.';
+        } else if (serverMsg?.includes('too small')) {
+          detailedError = 'Face is too small in the image. Please get closer to the camera.';
+        } else if (serverMsg?.includes('too large')) {
+          detailedError = 'File is too large. Maximum file size is 5MB.';
+        } else if (serverMsg?.includes('invalid file type')) {
+          detailedError = 'Invalid file type. Please use PNG, JPG, or JPEG.';
+        } else {
+          detailedError = serverMsg || 'Failed to register face. Please try again.';
+        }
       } catch (e) {
         serverMsg = null;
+        detailedError = 'Failed to register face. Please check console for details.';
       }
-      if (serverMsg) {
-        setError(serverMsg);
-        setToast({ type: 'error', message: serverMsg });
-      } else {
-        setError('Failed to register face. Please try again.');
-        setToast({ type: 'error', message: 'Failed to register face. Please try again.' });
-      }
-      setTimeout(() => setToast(null), 4000);
+      
+      setError(detailedError);
+      setToast({ type: 'error', message: detailedError });
+      setTimeout(() => setToast(null), 5000);
     } finally {
       setIsLoading(false);
       setUploadProgress(0);
